@@ -1064,6 +1064,24 @@ function getFinalSystemPrompt(systemPrompt, results, models) {
   return systemPrompt + "\n" + parts.map((r, i) => `${i + 1}. ${r}`).join("\n");
 }
 
+function getCurrentTimeContext() {
+  const now = new Date();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  const localTime = now.toLocaleString(undefined, {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, timeZoneName: "short",
+  });
+  return `Current date and time: ${localTime}. Time zone: ${timeZone}. ISO timestamp: ${now.toISOString()}. Use this as the reference for relative dates such as today, tomorrow, yesterday, now, latest, or recent.`;
+}
+
+function withTimeContext(messages, systemPrompt) {
+  const content = systemPrompt
+    ? `${getCurrentTimeContext()}\n\n${systemPrompt}`
+    : getCurrentTimeContext();
+  return [{ role: "system", content }, ...messages];
+}
+
 async function runMoATurn(instruction, ui) {
   const rows = cfg.rows;
   const aggRow = rows[cfg.aggIndex];
@@ -1090,8 +1108,8 @@ async function runMoATurn(instruction, ui) {
     const tasks = rows.map(async (row, idx) => {
       const prevContents = prev ? prev.map(r => r?.content || "") : null;
       const messages = prevContents
-        ? [{ role: "system", content: getFinalSystemPrompt(AGG_SYSTEM, prevContents) }, ...messageList]
-        : [...messageList];
+        ? withTimeContext(messageList, getFinalSystemPrompt(AGG_SYSTEM, prevContents))
+        : withTimeContext(messageList);
       const slot = ui.addCard(layer, idx, row, idx === cfg.aggIndex);
       const cardResult = {
         vendor: row.vendor, model: row.model, thinking: !!row.thinking,
@@ -1114,10 +1132,7 @@ async function runMoATurn(instruction, ui) {
   }
 
   const prevContents = prev ? prev.map(r => r?.content || "") : [];
-  const aggMessages = [
-    { role: "system", content: getFinalSystemPrompt(AGG_SYSTEM, prevContents) },
-    ...messageList,
-  ];
+  const aggMessages = withTimeContext(messageList, getFinalSystemPrompt(AGG_SYSTEM, prevContents));
   ui.setAggregatorRunning(aggRow);
   let finalText = "";
   let finalReasoning = "";
